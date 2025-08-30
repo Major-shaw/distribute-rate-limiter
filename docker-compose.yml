@@ -1,0 +1,138 @@
+services:
+  # Redis service for distributed storage
+  redis:
+    image: redis:7-alpine
+    container_name: rate_limiter_redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
+    command: redis-server /usr/local/etc/redis/redis.conf
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - rate_limiter_network
+    environment:
+      - REDIS_REPLICATION_MODE=master
+
+  # FastAPI rate limiter service
+  rate_limiter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: rate_limiter_app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Redis configuration
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - REDIS_TIMEOUT=0.005
+      
+      # Application configuration
+      - RATE_LIMITER_CONFIG_PATH=/app/config/rate_limits.json
+      
+      # Admin API key for management
+      - ADMIN_API_KEY=admin_secret_key_change_in_production
+      
+      # Logging
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./config:/app/config:ro
+      - ./logs:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - rate_limiter_network
+
+  # Optional: Redis Commander for Redis management (development only)
+  redis_commander:
+    image: ghcr.io/joeferner/redis-commander:latest
+    container_name: rate_limiter_redis_commander
+    restart: unless-stopped
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+      - HTTP_USER=admin
+      - HTTP_PASSWORD=admin
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+    networks:
+      - rate_limiter_network
+    profiles:
+      - dev  # Only start with --profile dev
+
+  # Load balancer simulation with multiple rate limiter instances
+  rate_limiter_2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: rate_limiter_app_2
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - REDIS_TIMEOUT=0.005
+      - RATE_LIMITER_CONFIG_PATH=/app/config/rate_limits.json
+      - ADMIN_API_KEY=admin_secret_key_change_in_production
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./config:/app/config:ro
+      - ./logs:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - rate_limiter_network
+    profiles:
+      - scale  # Only start with --profile scale
+
+  # HAProxy load balancer for testing distributed behavior
+  load_balancer:
+    image: haproxy:2.8-alpine
+    container_name: rate_limiter_lb
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+      - "8404:8404"  # HAProxy stats
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    depends_on:
+      - rate_limiter
+      - rate_limiter_2
+    networks:
+      - rate_limiter_network
+    profiles:
+      - scale  # Only start with --profile scale
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  rate_limiter_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

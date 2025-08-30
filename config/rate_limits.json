@@ -1,0 +1,48 @@
+{
+  "tiers": {
+    "free": {
+      "base_limit": 10,
+      "burst_limit": 20,
+      "degraded_limit": 2,
+      "window_minutes": 1
+    },
+    "pro": {
+      "base_limit": 100,
+      "burst_limit": 150,
+      "degraded_limit": 100,
+      "window_minutes": 1
+    },
+    "enterprise": {
+      "base_limit": 1000,
+      "burst_limit": 1000,
+      "degraded_limit": 1000,
+      "window_minutes": 1
+    }
+  },
+  "users": {
+    "demo_free_user": "free",
+    "demo_pro_user": "pro",
+    "demo_enterprise_user": "enterprise",
+    "john_doe": "free",
+    "jane_smith": "pro",
+    "acme_corp": "enterprise"
+  },
+  "api_keys": {
+    "demo_free_key_123": "demo_free_user",
+    "demo_free_key_456": "demo_free_user",
+    "demo_pro_key_789": "demo_pro_user",
+    "demo_enterprise_key_abc": "demo_enterprise_user",
+    "free_key_john_001": "john_doe",
+    "free_key_john_002": "john_doe",
+    "pro_key_jane_001": "jane_smith",
+    "enterprise_key_acme_001": "acme_corp"
+  },
+  "redis": {
+    "host": "localhost",
+    "port": 6379,
+    "db": 0,
+    "password": null,
+    "timeout": 0.005,
+    "max_connections": 50
+  }
+}

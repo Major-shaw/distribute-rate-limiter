@@ -1,0 +1,70 @@
+Project Assignment: Dynamic, Load-Aware Rate Limiter for FastAPI
+Hello,
+Thanks for the great conversation earlier. As the next step, we have a small project for you to work on over the next week. The goal is to see how you approach building a critical piece of infrastructure and how you reason about the trade-offs involved in its design.
+
+
+
+The Problem
+Imagine our startup is building a new public API that relies on expensive GPU resources (e.g., an ASR API). To manage server costs and create a monetization strategy, we want to offer different access tiers to our users: Free, Pro, and Enterprise.
+Your task is to build a FastAPI middleware that enforces rate limits for these tiers. The crucial challenge is that our API runs on multiple server instances behind a load balancer, so the rate limiting logic must work correctly in a scalable distributed environment.
+Functional Requirements
+FastAPI Middleware: The solution must be implemented as a standard FastAPI middleware that can be easily applied to any API endpoint.
+Tier-Based Logic: The rate limits must be applied based on the user’s tier. The tier should be determined from an X-API-Key header sent with each request. You can create a simple mock function or dictionary to map API keys to tiers.
+Configurable Tiers: The tiers and their corresponding limits should be easily configurable (e.g., from a JSON file), not hardcoded.
+Correct HTTP Responses:
+If a request is within the limit, it should be processed normally.
+If a request exceeds the limit, the middleware must immediately return an HTTP 429 Too Many Requests error.
+Successful responses should include the following headers to inform the user:
+X-RateLimit-Limit: The total request limit for the current window.
+X-RateLimit-Remaining: The number of requests remaining in the window.
+X-RateLimit-Reset: A UTC timestamp indicating when the limit will reset.
+
+Advanced Requirement: Dynamic, Load-Aware Limiting
+This is the key to the assignment. To maximize GPU utilization and protect our SLAs, the rate limiter must not be static. It needs to adapt to the overall health of the system.
+You will need to model a global “System Health Status” which can be in one of two states: NORMAL or DEGRADED.
+You don’t need to build a complex monitoring system. Simply create a protected admin endpoint (e.g., POST /system/health) that allows setting this global state (e.g., writing a value to a specific key in Redis).
+The middleware’s behavior must change based on this state:
+During NORMAL State (Maximize Utilization): We want to use our GPUs to their fullest.
+Users should be allowed to burst above their standard limits. For example, a Free tier user with a 10 RPM limit might be allowed to burst up to 20 RPM, and a Pro user might burst from 100 to 150 RPM. This “burst” value should be part of your configuration file.
+During DEGRADED State (Shed Load & Protect SLAs): The system is under heavy load, and we must shed traffic gracefully while honoring our contracts with paying customers.
+Enterprise Tier: The rate limit is strictly enforced at their promised SLA (e.g., 1000 RPM). No bursting is allowed.
+Pro Tier: The rate limit is also strictly enforced at their promised SLA (e.g., 100 RPM).
+Free Tier: These users are the first to be heavily throttled. Their limit should be drastically reduced to a very low “degraded” value (e.g., 2 RPM). This value should also be in the configuration file.
+
+Non-Functional Requirements (NFRs)
+Distributed Consistency: The request count for a given API key must be shared and consistent across all API server instances.
+High Performance: The rate-limiting check (including the system health check) should add minimal latency to the overall request time (e.g., ideally under 5ms).
+High Availability: Your solution depends on a central data store (like Redis). You must consider what happens if this store becomes slow or unavailable.
+Scalability: The solution should be designed to handle a large number of concurrent users and requests (e.g., What happens when the scale grows 10x or even 100x?).
+Technical Stack
+Framework: FastAPI
+Central Store: Redis is strongly recommended for this task.
+Containerization: Please provide a Dockerfile and docker-compose.yml for easy setup and testing of your solution.
+
+Testing:
+Please include unit tests for your middleware logic.
+Show working examples of the rate limiting in action, including switching between NORMAL and DEGRADED states.
+Provide an endpoint to functionally test the rate limiting (e.g., a simple GET /test endpoint that returns a success message or 429 based on load).
+
+Deliverables
+Please submit a link to a private Git repository containing:
+Source Code: The complete, running application.
+Configuration: A sample configuration file that defines the base, burst, and degraded limits for each tier.
+README.md File: This document is where you will demonstrate your thinking. It must include all the previously mentioned points, plus:
+Dynamic Limiting Implementation: A specific section explaining how the middleware checks the system’s health status and dynamically adjusts the rate limit logic for each tier. Discuss how you made this check efficient.
+Configuration Schema: An explanation of your configuration file structure.
+Instructions: Provide step by step instructions on how to run the application.
+Evaluation Criteria
+Design Justification: The clarity, depth, and quality of your explanations in the README.md.
+Dynamic Logic: The correctness of your solution for the load-aware limiting requirement.
+Understanding of Distributed Systems and Scale: How well you’ve addressed the challenges of consistency, performance, and failure at scale.
+Code Quality: Is your code clean, organized, and testable?
+Timeline
+After reading through the assignment, we expect you to submit an assignment within 7 days.
+Use of AI Tools
+You may use AI tools (like ChatGPT) to assist you in writing code or documentation. However, please ensure that you understand and can explain all parts of your submission, as we may ask you to walk through your code and design choices during a follow-up interview.
+
+
+Good luck, and we look forward to seeing your work!
+
+

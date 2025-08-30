@@ -15,6 +15,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.security import APIKeyHeader
 
 from src.middleware.rate_limiter import RateLimitMiddleware
 from src.api.admin import router as admin_router
@@ -151,6 +152,9 @@ def setup_logging():
 setup_logging()
 logger = logging.getLogger(__name__)
 
+# Define API key security scheme
+api_key_header = APIKeyHeader(name="X-API-Key", description="API key for authentication")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -214,7 +218,8 @@ app = FastAPI(
     * **High availability**: Circuit breaker pattern and graceful degradation
 
     ### Authentication
-    Include your API key in the `X-API-Key` header with each request.
+    **Test endpoints only:** Include your API key in the `X-API-Key` header with requests to `/test/*` endpoints.
+    Admin and info endpoints do not require authentication.
 
     ### Rate Limiting Behavior
 
@@ -243,8 +248,53 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    openapi_tags=[
+        {
+            "name": "test",
+            "description": "Test endpoints for rate limiting functionality. **Requires API key authentication.**"
+        },
+        {
+            "name": "admin",
+            "description": "Administrative endpoints for system management (no authentication required for demo)."
+        },
+        {
+            "name": "info",
+            "description": "Information endpoints (no authentication required)."
+        }
+    ]
 )
+
+# Add security scheme to OpenAPI
+app.openapi_schema = None  # Reset to regenerate with security
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    
+    from fastapi.openapi.utils import get_openapi
+    
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    
+    # Add security scheme only for test endpoints
+    openapi_schema["components"]["securitySchemes"] = {
+        "APIKeyHeader": {
+            "type": "apiKey",
+            "in": "header",
+            "name": "X-API-Key",
+            "description": "API key for authentication. Use demo keys: demo_free_key_123 (Free), demo_pro_key_789 (Pro), demo_enterprise_key_abc (Enterprise)"
+        }
+    }
+    
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
 
 # Add CORS middleware for development
 app.add_middleware(
@@ -256,14 +306,15 @@ app.add_middleware(
 )
 
 # Add rate limiting middleware
-# Exclude health check and documentation endpoints
+# Exclude health check, admin, and documentation endpoints
 excluded_paths = [
     "/health",
     "/",
     "/docs", 
     "/redoc",
     "/openapi.json",
-    "/favicon.ico"
+    "/favicon.ico",
+    "/admin/*"  # Exclude all admin endpoints from rate limiting and API key requirements
 ]
 
 app.add_middleware(RateLimitMiddleware, exclude_paths=excluded_paths)

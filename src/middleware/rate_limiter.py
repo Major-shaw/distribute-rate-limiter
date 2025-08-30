@@ -235,6 +235,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 }
             )
             
+            # Store rate limit info in request state for endpoints to access
+            request.state.rate_limit_result = rate_limit_result
+            request.state.user_id = user_id
+            request.state.tier = tier
+            
             # Process the request
             response = await call_next(request)
             

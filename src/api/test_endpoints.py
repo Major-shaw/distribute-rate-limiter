@@ -9,13 +9,56 @@ import time
 import json
 from typing import Optional, Dict, Any
 from datetime import datetime
-
-from fastapi import APIRouter, Request, Query, Path, HTTPException
+import logging
+from fastapi import APIRouter, Request, Query, Path, HTTPException, Depends
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 
 from ..services.rate_limit_service import health_service
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(tags=["test"])
+
+# API key security scheme for documentation
+api_key_header = APIKeyHeader(name="X-API-Key", description="API key for authentication")
+
+async def get_api_key(api_key: str = Depends(api_key_header)) -> str:
+    """
+    Dependency to extract API key for documentation purposes.
+    
+    Note: Actual API key validation is handled by middleware.
+    This dependency is primarily for OpenAPI documentation.
+    """
+    return api_key
+
+
+def get_rate_limit_info_from_state(request: Request) -> Optional[Dict[str, Any]]:
+    """Extract rate limit information from request state (set by middleware)."""
+    rate_limit_result = getattr(request.state, "rate_limit_result", None)
+    if rate_limit_result:
+        return {
+            "limit": rate_limit_result.limit,
+            "remaining": rate_limit_result.remaining,
+            "reset": rate_limit_result.reset_time
+        }
+    return {
+        "limit": None,
+        "remaining": None,
+        "reset": None
+    }
+
+
+def get_user_info_from_state(request: Request) -> Optional[Dict[str, Any]]:
+    """Extract user information from request state (set by middleware)."""
+    user_id = getattr(request.state, "user_id", None)
+    tier = getattr(request.state, "tier", None)
+    if user_id and tier:
+        return {
+            "user_id": user_id,
+            "tier": tier
+        }
+    return None
 
 
 class TestResponse(BaseModel):
@@ -28,7 +71,7 @@ class TestResponse(BaseModel):
 
 
 @router.get("/test", summary="Basic rate limiting test endpoint")
-async def basic_test(request: Request) -> TestResponse:
+async def basic_test(request: Request, api_key: str = Depends(get_api_key)) -> TestResponse:
     """
     Basic test endpoint for rate limiting.
     
@@ -40,20 +83,16 @@ async def basic_test(request: Request) -> TestResponse:
     - Different API keys and tiers
     - System health state changes
     """
-    # Extract rate limiting information from headers
-    rate_limit_info = {
-        "limit": request.headers.get("X-RateLimit-Limit"),
-        "remaining": request.headers.get("X-RateLimit-Remaining"),
-        "reset": request.headers.get("X-RateLimit-Reset")
-    }
-    
-    # Get request ID from state (set by middleware)
+    # Get information from request state (set by middleware)
     request_id = getattr(request.state, "request_id", None)
+    rate_limit_info = get_rate_limit_info_from_state(request)
+    user_info = get_user_info_from_state(request)
     
     return TestResponse(
         message="Hello! Your request was processed successfully.",
         timestamp=datetime.utcnow(),
         request_id=request_id,
+        user_info=user_info,
         rate_limit_info=rate_limit_info
     )
 
@@ -62,7 +101,8 @@ async def basic_test(request: Request) -> TestResponse:
 async def simulate_load(
     request: Request,
     requests: int = Query(5, ge=1, le=50, description="Number of requests to simulate"),
-    delay_ms: int = Query(100, ge=0, le=5000, description="Delay between requests in milliseconds")
+    delay_ms: int = Query(100, ge=0, le=5000, description="Delay between requests in milliseconds"),
+    api_key: str = Depends(get_api_key)
 ) -> Dict[str, Any]:
     """
     Simulate multiple API requests for load testing.
@@ -87,12 +127,8 @@ async def simulate_load(
             if delay_ms > 0:
                 time.sleep(delay_ms / 1000.0)
             
-            # Get current rate limit headers
-            rate_limit_info = {
-                "limit": request.headers.get("X-RateLimit-Limit"),
-                "remaining": request.headers.get("X-RateLimit-Remaining"),
-                "reset": request.headers.get("X-RateLimit-Reset")
-            }
+            # Get current rate limit info from request state
+            rate_limit_info = get_rate_limit_info_from_state(request)
             
             results.append({
                 "request_number": i + 1,
@@ -129,7 +165,8 @@ async def simulate_load(
 @router.get("/test/tier-demo/{tier}", summary="Demonstrate tier-specific behavior")
 async def tier_demo(
     request: Request,
-    tier: str = Path(..., regex="^(free|pro|enterprise)$", description="Tier to demonstrate")
+    tier: str = Path(..., regex="^(free|pro|enterprise)$", description="Tier to demonstrate"),
+    api_key: str = Depends(get_api_key)
 ) -> Dict[str, Any]:
     """
     Demonstrate rate limiting behavior for different tiers.
@@ -143,12 +180,8 @@ async def tier_demo(
     # Get system health
     health_status = await health_service.get_system_health()
     
-    # Get rate limit info from headers
-    rate_limit_info = {
-        "limit": request.headers.get("X-RateLimit-Limit"),
-        "remaining": request.headers.get("X-RateLimit-Remaining"),
-        "reset": request.headers.get("X-RateLimit-Reset")
-    }
+    # Get rate limit info from request state
+    rate_limit_info = get_rate_limit_info_from_state(request)
     
     # Provide tier-specific guidance
     tier_guidance = {
@@ -181,7 +214,7 @@ async def tier_demo(
 
 
 @router.get("/test/health-impact", summary="Show system health impact on rate limits")
-async def health_impact(request: Request) -> Dict[str, Any]:
+async def health_impact(request: Request, api_key: str = Depends(get_api_key)) -> Dict[str, Any]:
     """
     Demonstrate how system health affects rate limiting.
     
@@ -192,12 +225,8 @@ async def health_impact(request: Request) -> Dict[str, Any]:
     health_status = await health_service.get_system_health()
     current_health = health_status.get("status", "NORMAL")
     
-    # Get rate limit info
-    rate_limit_info = {
-        "limit": request.headers.get("X-RateLimit-Limit"),
-        "remaining": request.headers.get("X-RateLimit-Remaining"),
-        "reset": request.headers.get("X-RateLimit-Reset")
-    }
+    # Get rate limit info from request state
+    rate_limit_info = get_rate_limit_info_from_state(request)
     
     # Explain health impact
     health_impact_explanation = {
@@ -231,7 +260,8 @@ async def health_impact(request: Request) -> Dict[str, Any]:
 @router.get("/test/burst", summary="Test burst rate limiting behavior")
 async def test_burst(
     request: Request,
-    rapid_requests: int = Query(15, ge=5, le=30, description="Number of rapid requests to attempt")
+    rapid_requests: int = Query(15, ge=5, le=30, description="Number of rapid requests to attempt"),
+    api_key: str = Depends(get_api_key)
 ) -> Dict[str, Any]:
     """
     Test burst rate limiting behavior.
@@ -249,13 +279,9 @@ async def test_burst(
     for i in range(rapid_requests):
         request_time = time.time()
         
-        # Get current rate limit status
-        rate_limit_info = {
-            "limit": request.headers.get("X-RateLimit-Limit"),
-            "remaining": request.headers.get("X-RateLimit-Remaining"),
-            "reset": request.headers.get("X-RateLimit-Reset"),
-            "timestamp": request_time
-        }
+        # Get current rate limit status from request state
+        rate_limit_info = get_rate_limit_info_from_state(request)
+        rate_limit_info["timestamp"] = request_time
         
         results.append({
             "request_number": i + 1,

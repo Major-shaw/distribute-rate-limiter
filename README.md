@@ -181,11 +181,30 @@ git clone <repository-url>
 cd distribute-rate-limiter
 
 # Start all services
-docker-compose up -d
+docker compose up -d
 
 # Verify deployment
 curl -H "X-API-Key: demo_free_key_123" http://localhost:8000/test
 ```
+
+### Scaled Deployment with Load Balancer
+
+```bash
+# Start with multiple instances and load balancer
+docker compose --profile scale up -d
+
+# Test via load balancer (distributes across instances)
+curl -H "X-API-Key: demo_pro_key_789" http://localhost:8080/test
+
+# Monitor load balancer stats
+open http://localhost:8404/stats
+```
+
+**Available Endpoints:**
+- **Application**: `http://localhost:8000` (single instance)
+- **Load Balancer**: `http://localhost:8080` (distributes traffic)
+- **HAProxy Stats**: `http://localhost:8404/stats` (monitoring dashboard)
+- **Instance 2**: `http://localhost:8001` (direct access)
 
 ### Local Development Setup
 
@@ -451,6 +470,55 @@ curl http://localhost:8000/admin/health
 
 # Redis connectivity
 redis-cli -h localhost -p 6379 ping
+```
+
+### Load Balancer Monitoring
+
+When using the scaling profile, HAProxy provides real-time monitoring and statistics:
+
+```bash
+# Start scaled deployment with load balancer
+docker compose --profile scale up -d
+
+# Access HAProxy statistics dashboard
+open http://localhost:8404/stats
+# Or via curl
+curl http://localhost:8404/stats
+```
+
+**HAProxy Stats Dashboard Features:**
+- **Real-time Metrics**: Request rates, response times, error rates
+- **Backend Health**: Individual server status and health checks
+- **Load Distribution**: Traffic distribution across instances
+- **Connection Stats**: Active connections, queued requests
+- **Server Management**: Enable/disable servers dynamically
+
+**Key Metrics to Monitor:**
+```
+Frontend Stats:
+├── Sessions/sec: Current request rate
+├── Bytes in/out: Network throughput  
+├── Status codes: 2xx/4xx/5xx distribution
+└── Max connections: Peak concurrent requests
+
+Backend Stats:
+├── Server status: UP/DOWN/MAINT
+├── Health checks: Success/failure ratio
+├── Response time: Average backend latency
+└── Queue depth: Pending requests per server
+```
+
+**Load Balancer Testing:**
+```bash
+# Test load distribution across instances
+for i in {1..10}; do
+  curl -s -H "X-API-Key: demo_pro_key_789" \
+    http://localhost:8080/test | \
+    jq -r '.request_id'
+done
+
+# Monitor in real-time
+watch -n 1 'curl -s http://localhost:8404/stats | grep -A 5 "rate_limiter_backend"'
 ```
 
 ### Log Analysis

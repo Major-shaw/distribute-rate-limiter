@@ -184,7 +184,7 @@ cd distribute-rate-limiter
 docker-compose up -d
 
 # Verify deployment
-curl -H "X-API-Key: demo_free_key_123" http://localhost:8000/health
+curl -H "X-API-Key: demo_free_key_123" http://localhost:8000/test
 ```
 
 ### Local Development Setup

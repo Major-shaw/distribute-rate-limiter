@@ -46,6 +46,7 @@ services:
       
       # Logging
       - LOG_LEVEL=INFO
+      - LOG_DIR=/app/logs
     volumes:
       - ./config:/app/config:ro
       - ./logs:/app/logs
@@ -97,6 +98,7 @@ services:
       - RATE_LIMITER_CONFIG_PATH=/app/config/rate_limits.json
       - ADMIN_API_KEY=admin_secret_key_change_in_production
       - LOG_LEVEL=INFO
+      - LOG_DIR=/app/logs
     volumes:
       - ./config:/app/config:ro
       - ./logs:/app/logs

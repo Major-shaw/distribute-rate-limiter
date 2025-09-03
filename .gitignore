@@ -218,3 +218,6 @@ test_*.py.tmp
 test_enhanced_logging.py
 test_logging_direct.py
 verify_redis_config.py
+
+#misc
+todo.txt

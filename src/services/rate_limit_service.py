@@ -24,7 +24,7 @@ class RateLimitService:
         """Initialize rate limiting service."""
         self.redis_client = redis_client
         self._health_cache = {}
-        self._health_cache_ttl = 2  # Cache health status for 2 seconds
+        self._health_cache_ttl = 2 # Cache health status for 2 seconds
         self._last_health_check = 0
     
     async def check_rate_limit(self, user_id: str, tier: str) -> RateLimitResult:

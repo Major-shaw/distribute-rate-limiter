@@ -511,8 +511,8 @@ class SecurityRateLimiter:
             
         except Exception as e:
             logger.error(f"Failed to check invalid key attempts for {ip_address}: {e}")
-            # If Redis is down, allow the request (fail open for security checks)
-            return True
+            # If Redis is down, do not allow the request (fail close)
+            return False
     
     async def is_ip_blocked(self, ip_address: str) -> bool:
         """

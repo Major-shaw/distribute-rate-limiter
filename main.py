@@ -8,8 +8,6 @@ dynamic, load-aware rate limiting with Redis-based distributed storage.
 import logging
 import asyncio
 import os
-from pathlib import Path
-from logging.handlers import RotatingFileHandler
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -22,134 +20,10 @@ from src.api.admin import router as admin_router
 from src.api.test_endpoints import router as test_router
 from src.core.redis_client import redis_client
 from src.core.config import config_manager
+from src.core.logging_config import setup_logging_from_env
 
-# Configure comprehensive logging
-def setup_logging():
-    """Setup comprehensive logging to both console and files."""
-    # Ensure logs directory exists
-    log_dir = Path("logs")
-    log_dir.mkdir(exist_ok=True)
-    
-    # Create custom formatter with extra fields
-    class CustomFormatter(logging.Formatter):
-        def format(self, record):
-            # Add request_id to the format if available
-            if hasattr(record, 'request_id'):
-                record.req_id = f"[{record.request_id}] "
-            else:
-                record.req_id = ""
-            
-            # Add operation markers if available
-            operations = []
-            for attr in ['lifecycle_stage', 'service_operation', 'redis_operation', 
-                        'user_service_operation', 'config_operation']:
-                if hasattr(record, attr):
-                    operations.append(f"{attr}={getattr(record, attr)}")
-            
-            if operations:
-                record.operations = f" [{', '.join(operations)}]"
-            else:
-                record.operations = ""
-            
-            return super().format(record)
-    
-    # Format string with request ID and operations
-    log_format = '%(asctime)s - %(name)s - %(levelname)s - %(req_id)s%(message)s%(operations)s'
-    formatter = CustomFormatter(log_format)
-    
-    # Clear any existing handlers
-    root_logger = logging.getLogger()
-    root_logger.handlers.clear()
-    
-    # Console handler (INFO and above)
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
-    console_handler.setFormatter(formatter)
-    root_logger.addHandler(console_handler)
-    
-    # Main application log file (INFO and above) with rotation
-    main_file_handler = RotatingFileHandler(
-        log_dir / "rate_limiter.log",
-        maxBytes=10*1024*1024,  # 10MB
-        backupCount=5
-    )
-    main_file_handler.setLevel(logging.INFO)
-    main_file_handler.setFormatter(formatter)
-    root_logger.addHandler(main_file_handler)
-    
-    # Debug log file (DEBUG and above) with rotation
-    debug_file_handler = RotatingFileHandler(
-        log_dir / "rate_limiter_debug.log",
-        maxBytes=50*1024*1024,  # 50MB
-        backupCount=3
-    )
-    debug_file_handler.setLevel(logging.DEBUG)
-    debug_file_handler.setFormatter(formatter)
-    root_logger.addHandler(debug_file_handler)
-    
-    # Security events log file (WARNING and above)
-    security_file_handler = RotatingFileHandler(
-        log_dir / "security.log",
-        maxBytes=10*1024*1024,  # 10MB
-        backupCount=10
-    )
-    security_file_handler.setLevel(logging.WARNING)
-    security_file_handler.setFormatter(formatter)
-    root_logger.addHandler(security_file_handler)
-    
-    # Rate limiting specific log file
-    rate_limit_handler = RotatingFileHandler(
-        log_dir / "rate_limiting.log",
-        maxBytes=20*1024*1024,  # 20MB
-        backupCount=5
-    )
-    rate_limit_handler.setLevel(logging.INFO)
-    rate_limit_handler.setFormatter(formatter)
-    
-    # Add filter to only log rate limiting related messages
-    class RateLimitFilter(logging.Filter):
-        def filter(self, record):
-            # Log if it's from rate limiting components or has rate limit keywords
-            rate_limit_components = [
-                'src.middleware.rate_limiter',
-                'src.services.rate_limit_service',
-                'src.core.redis_client'
-            ]
-            
-            if record.name in rate_limit_components:
-                return True
-            
-            # Check for rate limiting keywords in the message
-            keywords = ['rate limit', 'rate_limit', 'remaining', 'allowed', 'exceeded']
-            message = record.getMessage().lower()
-            return any(keyword in message for keyword in keywords)
-    
-    rate_limit_handler.addFilter(RateLimitFilter())
-    root_logger.addHandler(rate_limit_handler)
-    
-    # Set root logger level
-    root_logger.setLevel(logging.DEBUG)
-    
-    # Configure specific loggers
-    logging.getLogger('uvicorn').setLevel(logging.INFO)
-    logging.getLogger('uvicorn.access').setLevel(logging.WARNING)  # Reduce access log noise
-    logging.getLogger('fastapi').setLevel(logging.INFO)
-    
-    # Rate limiter components - more verbose
-    logging.getLogger('src.middleware.rate_limiter').setLevel(logging.DEBUG)
-    logging.getLogger('src.services.rate_limit_service').setLevel(logging.DEBUG)
-    logging.getLogger('src.services.user_service').setLevel(logging.DEBUG)
-    logging.getLogger('src.core.redis_client').setLevel(logging.DEBUG)
-    logging.getLogger('src.core.config').setLevel(logging.INFO)
-    
-    print(f"✓ Logging configured - logs will be written to: {log_dir.absolute()}")
-    print("  - rate_limiter.log (INFO+)")
-    print("  - rate_limiter_debug.log (DEBUG+)")
-    print("  - security.log (WARNING+)")
-    print("  - rate_limiting.log (rate limiting specific)")
-
-# Setup logging
-setup_logging()
+# Setup logging using environment variables or defaults
+setup_logging_from_env()
 logger = logging.getLogger(__name__)
 
 # Define API key security scheme
@@ -264,37 +138,6 @@ app = FastAPI(
         }
     ]
 )
-
-# Add security scheme to OpenAPI
-app.openapi_schema = None  # Reset to regenerate with security
-
-def custom_openapi():
-    if app.openapi_schema:
-        return app.openapi_schema
-    
-    from fastapi.openapi.utils import get_openapi
-    
-    openapi_schema = get_openapi(
-        title=app.title,
-        version=app.version,
-        description=app.description,
-        routes=app.routes,
-    )
-    
-    # Add security scheme only for test endpoints
-    openapi_schema["components"]["securitySchemes"] = {
-        "APIKeyHeader": {
-            "type": "apiKey",
-            "in": "header",
-            "name": "X-API-Key",
-            "description": "API key for authentication. Use demo keys: demo_free_key_123 (Free), demo_pro_key_789 (Pro), demo_enterprise_key_abc (Enterprise)"
-        }
-    }
-    
-    app.openapi_schema = openapi_schema
-    return app.openapi_schema
-
-app.openapi = custom_openapi
 
 # Add CORS middleware for development
 app.add_middleware(

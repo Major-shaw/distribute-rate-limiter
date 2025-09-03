@@ -202,6 +202,7 @@ python test_rate_limiter.py
 
 Set environment variables:
 ```bash
+<<<<<<< Updated upstream
 REDIS_HOST=redis.prod.com
 REDIS_PASSWORD=secure_password
 ADMIN_API_KEY=secure_admin_key
@@ -212,3 +213,11 @@ See docker-compose.yml for complete production configuration.
 ---
 
 **Interactive Demo**: Start the service and visit http://localhost:8000/docs to explore the API interactively.
+=======
+# Redis Cluster setup (3 masters, 3 replicas)
+redis-cli --cluster create \
+  redis1:6379 redis2:6379 redis3:6379 \
+  redis4:6379 redis5:6379 redis6:6379 \
+  --cluster-replicas 1
+```
+>>>>>>> Stashed changes

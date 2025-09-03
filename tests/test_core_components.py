@@ -15,8 +15,9 @@ from src.core.models import (
     APIKeyError, SystemHealth
 )
 from src.core.config import ConfigManager
-from src.services.user_service import UserTierManager, APIKeyValidator
-from src.services.rate_limit_service import RateLimitService
+from src.services.user_management import UserTierManager
+from src.services.api_key_validation import APIKeyValidator
+from src.services.rate_limiting import RateLimitService
 
 
 class TestTierConfig:
@@ -118,7 +119,7 @@ class TestUserTierManager:
     @pytest.fixture
     def mock_config_manager(self):
         """Mock configuration manager with test data."""
-        with patch('src.services.user_service.config_manager') as mock:
+        with patch('src.services.user_management.config_manager') as mock:
             mock.config = Mock()
             mock.config.api_keys = {
                 "test_key_1": "user1",
@@ -128,6 +129,11 @@ class TestUserTierManager:
             mock.config.users = {
                 "user1": "free",
                 "user2": "pro"
+            }
+            mock.config.tiers = {
+                "free": Mock(),
+                "pro": Mock(),
+                "enterprise": Mock()
             }
             yield mock
     
@@ -181,7 +187,7 @@ class TestAPIKeyValidator:
         """Test validation of valid API key."""
         request_context = {"ip_address": "127.0.0.1", "user_agent": "test"}
         
-        user_id, tier = validator.validate_api_key("valid_key", request_context)
+        user_id, tier = validator.validate_api_key("valid_api_key_1234", request_context)
         assert user_id == "user1"
         assert tier == "free"
     
@@ -210,7 +216,7 @@ class TestAPIKeyValidator:
         request_context = {"ip_address": "127.0.0.1", "user_agent": "test"}
         
         with pytest.raises(APIKeyError) as exc_info:
-            validator.validate_api_key("mal@formed#key!", request_context)
+            validator.validate_api_key("mal@formed#key!123", request_context)
         
         assert exc_info.value.error_code == "MALFORMED_API_KEY"
         assert exc_info.value.status_code == 400
@@ -221,7 +227,7 @@ class TestAPIKeyValidator:
         request_context = {"ip_address": "127.0.0.1", "user_agent": "test"}
         
         with pytest.raises(APIKeyError) as exc_info:
-            validator.validate_api_key("invalid_key", request_context)
+            validator.validate_api_key("invalid_key_1234", request_context)
         
         assert exc_info.value.error_code == "INVALID_API_KEY"
         assert exc_info.value.status_code == 401
@@ -233,7 +239,7 @@ class TestRateLimitService:
     @pytest.fixture
     def mock_config_manager(self):
         """Mock configuration manager."""
-        with patch('src.services.rate_limit_service.config_manager') as mock:
+        with patch('src.services.rate_limiting.config_manager') as mock:
             mock.get_tier_config.return_value = TierConfig(
                 base_limit=10,
                 burst_limit=20,
@@ -245,7 +251,7 @@ class TestRateLimitService:
     @pytest.fixture
     def mock_redis_client(self):
         """Mock Redis client."""
-        with patch('src.services.rate_limit_service.redis_client') as mock:
+        with patch('src.services.rate_limiting.redis_client') as mock:
             mock.check_rate_limit = AsyncMock(return_value=(True, 5, int(time.time()) + 60))
             yield mock
     

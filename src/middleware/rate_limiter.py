@@ -17,7 +17,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from ..core.models import APIKeyError
 from ..core.redis_client import redis_client
-from ..services.user_service import api_key_validator, SecurityRateLimiter
+from ..services.user_service import api_key_validator
+from ..services.security_rate_limiting import SecurityRateLimiter
 from ..services.rate_limit_service import rate_limit_service
 
 logger = logging.getLogger(__name__)

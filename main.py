@@ -139,37 +139,6 @@ app = FastAPI(
     ]
 )
 
-# Add security scheme to OpenAPI
-app.openapi_schema = None  # Reset to regenerate with security
-
-def custom_openapi():
-    if app.openapi_schema:
-        return app.openapi_schema
-    
-    from fastapi.openapi.utils import get_openapi
-    
-    openapi_schema = get_openapi(
-        title=app.title,
-        version=app.version,
-        description=app.description,
-        routes=app.routes,
-    )
-    
-    # Add security scheme only for test endpoints
-    openapi_schema["components"]["securitySchemes"] = {
-        "APIKeyHeader": {
-            "type": "apiKey",
-            "in": "header",
-            "name": "X-API-Key",
-            "description": "API key for authentication. Use demo keys: demo_free_key_123 (Free), demo_pro_key_789 (Pro), demo_enterprise_key_abc (Enterprise)"
-        }
-    }
-    
-    app.openapi_schema = openapi_schema
-    return app.openapi_schema
-
-app.openapi = custom_openapi
-
 # Add CORS middleware for development
 app.add_middleware(
     CORSMiddleware,
